@@ -1,0 +1,11 @@
+tools/
+build/
+private/
+local.properties
+*.apk
+*.idsig
+
+dist/
+*.p12
+*.jks
+*.keystore
