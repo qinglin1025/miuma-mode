@@ -113,13 +113,38 @@ public final class ModeService extends Service {
     }
     private void showChoice(){
         if(!running||session.state()!=Session.CHOOSING)return;
-        LinearLayout box=makeCard("这次，准备怎么用？","选择一种计时方式");
-        addButton(box,"正计时\n看见时间流逝",true,()->startTimer(false));
-        addButton(box,"倒计时 · "+prefs.minutes()+" 分钟\n到时"+Prefs.actionName(prefs.action()),false,()->startTimer(true));
-        addButton(box,"退出牛马模式",false,this::exit);
-        TextView hint=Ui.text(this,"时长与提醒方式请在软件内修改",11,Ui.MUTED,false);
+        LinearLayout box=makeCard("这次，准备怎么用？","选择本次操作");
+        for(int option:PopupOptions.ordered(prefs.popupMask())){
+            if(option==PopupOptions.UP)addButton(box,"正计时\n看见时间流逝",true,()->startTimer(false));
+            else if(option==PopupOptions.DOWN)addButton(box,"倒计时 · "+prefs.minutes()+" 分钟\n到时"+Prefs.actionName(prefs.action()),false,()->startTimer(true));
+            else if(option==PopupOptions.SCREEN_OFF)addButton(box,"直接息屏\n保留牛马模式",false,this::directScreenOff);
+            else if(option==PopupOptions.EXIT)addButton(box,"退出牛马模式",false,this::exit);
+        }
+        TextView hint=Ui.text(this,"显示选项、时长与提醒方式请在软件内修改",11,Ui.MUTED,false);
         hint.setGravity(Gravity.CENTER);Ui.space(box,10);box.addView(hint);
         attachCard(box);
+    }
+    private boolean lockScreen(){
+        DevicePolicyManager dm=getSystemService(DevicePolicyManager.class);
+        ComponentName admin=new ComponentName(this,LockAdminReceiver.class);
+        try{
+            if(dm!=null&&dm.isAdminActive(admin)){dm.lockNow();endSession();return true;}
+        }catch(SecurityException e){android.util.Log.w("NiumaMode","Lock permission unavailable",e);}
+        return false;
+    }
+    private void directScreenOff(){
+        if(!running||session.state()!=Session.CHOOSING)return;
+        if(lockScreen())return;
+        LinearLayout box=makeCard("需要息屏授权","请在软件内开启息屏 / 锁屏授权，然后再次选择直接息屏。");
+        addButton(box,"打开软件授权",true,()->{
+            removeCard();
+            try{
+                startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("lock_authorization",true));
+            }catch(RuntimeException e){
+                Toast.makeText(this,"请手动打开牛马模式进行授权",Toast.LENGTH_LONG).show();showChoice();
+            }
+        });
+        addButton(box,"返回选择",false,this::showChoice);attachCard(box);
     }
     private void startTimer(boolean down){
         if(session.state()!=Session.CHOOSING)return;
@@ -215,11 +240,7 @@ public final class ModeService extends Service {
         updateClock(SystemClock.elapsedRealtime());
         removeCard();
         if(sessionAction==Prefs.LOCK){
-            DevicePolicyManager dm=getSystemService(DevicePolicyManager.class);
-            ComponentName admin=new ComponentName(this,LockAdminReceiver.class);
-            try{
-                if(dm.isAdminActive(admin)){dm.lockNow();endSession();return;}
-            }catch(SecurityException ignored){}
+            if(lockScreen())return;
             showReminder("自动锁屏未完成","请在软件内检查锁屏授权。");return;
         }
         if(sessionAction==Prefs.VIBRATE){

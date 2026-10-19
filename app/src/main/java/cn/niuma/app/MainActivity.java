@@ -22,7 +22,11 @@ public final class MainActivity extends Activity {
         public void run(){updateStatus();handler.postDelayed(this,750);}
     };
     @Override public void onCreate(Bundle b){super.onCreate(b);prefs=new Prefs(this);}
-    @Override public void onResume(){super.onResume();render();handler.removeCallbacks(refresh);handler.post(refresh);}
+    @Override public void onResume(){super.onResume();render();handler.removeCallbacks(refresh);handler.post(refresh);
+        if(getIntent().getBooleanExtra("lock_authorization",false)){
+            getIntent().removeExtra("lock_authorization");
+            if(!adminActive())explainAdmin();
+        }}
     @Override public void onPause(){handler.removeCallbacks(refresh);super.onPause();}
     private boolean adminActive(){
         return ((DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE)).isAdminActive(new ComponentName(this,LockAdminReceiver.class));
@@ -83,6 +87,11 @@ public final class MainActivity extends Activity {
             "修改仅影响下一次会话",12,Ui.MUTED,false));
         page.addView(actions);Ui.space(page,22);
 
+        LinearLayout popup=Ui.card(this);
+        popup.addView(Ui.text(this,"解锁弹窗选项",17,Ui.INK,true));Ui.space(popup,8);
+        popup.addView(Ui.text(this,"已显示 "+Integer.bitCount(prefs.popupMask())+" 个选项  ›",22,Ui.INK,true));Ui.space(popup,8);
+        popup.addView(Ui.text(this,"正计时 / 倒计时 / 直接息屏 / 退出\n点击选择任意 2–4 个，下次弹窗生效",12,Ui.MUTED,false));
+        popup.setOnClickListener(v->editPopupOptions());page.addView(popup);Ui.space(page,22);
         toggle=Ui.button(this,"",true);page.addView(toggle);
         toggle.setOnClickListener(v->{
             if(ModeService.running){
@@ -102,18 +111,38 @@ public final class MainActivity extends Activity {
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},10);
             }else openSettings(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getPackageName()));
         });
-        addSetting(page,"自动锁屏授权",adminActive()?"已授权 / 管理":"可选",()->{
+        addSetting(page,"息屏 / 锁屏授权",adminActive()?"已授权 / 管理":"可选",()->{
             if(adminActive())openSettings(new Intent(Settings.ACTION_SECURITY_SETTINGS));else explainAdmin();
         });
         addSetting(page,"后台与弹窗权限","查看说明",this::showXiaomiHelp);
         Ui.space(page,14);
-        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.1 · 设置仅保存在本机",12,Ui.MUTED,false));
+        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.2 · 设置仅保存在本机",12,Ui.MUTED,false));
         updateStatus();
     }
     private void addSetting(LinearLayout parent,String title,String detail,Runnable action){
         TextView row=Ui.text(this,title+"    "+detail+"  ›",14,Ui.INK,false);
         int p=Ui.dp(this,14);row.setPadding(p,p,p,p);row.setBackground(Ui.bg(this,Color.WHITE,12));
         row.setOnClickListener(v->action.run());parent.addView(row);Ui.space(parent,6);
+    }
+    private void editPopupOptions(){
+        String[] labels={"正计时","倒计时","直接息屏","退出牛马模式"};
+        int[] bits={PopupOptions.UP,PopupOptions.DOWN,PopupOptions.SCREEN_OFF,PopupOptions.EXIT};
+        int[] selected={prefs.popupMask()};
+        boolean[] checked=new boolean[4];
+        for(int i=0;i<4;i++)checked[i]=(selected[0]&bits[i])!=0;
+        AlertDialog dialog=new AlertDialog.Builder(this)
+            .setTitle("显示哪些选项？（选择 2–4 个）")
+            .setMultiChoiceItems(labels,checked,(d,which,on)->{
+                if(on)selected[0]|=bits[which];else selected[0]&=~bits[which];
+                ((AlertDialog)d).getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(PopupOptions.valid(selected[0]));
+            }).setNegativeButton("取消",null)
+            .setPositiveButton("保存",(d,w)->{
+                if(!PopupOptions.valid(selected[0]))return;
+                prefs.popupMask(selected[0]);render();
+                Toast.makeText(this,"已保存，下次弹窗生效；仍可在软件或通知栏退出模式",Toast.LENGTH_LONG).show();
+            }).create();
+        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(PopupOptions.valid(selected[0])));
+        dialog.show();
     }
     private void editMinutes(){
         EditText input=new EditText(this);input.setInputType(InputType.TYPE_CLASS_NUMBER);
@@ -144,12 +173,12 @@ public final class MainActivity extends Activity {
         catch(RuntimeException e){new AlertDialog.Builder(this).setMessage("未能开启模式，请检查后台运行权限后重试。").setPositiveButton("知道了",null).show();}
     }
     private void explainAdmin(){
-        new AlertDialog.Builder(this).setTitle("允许到时自动锁屏")
+        new AlertDialog.Builder(this).setTitle("允许直接息屏与到时锁屏")
             .setMessage("此功能仅申请设备管理中的“锁定屏幕”能力，不申请清除数据。锁屏后可能需要密码解锁。你可在系统安全设置撤销授权；卸载前也可能需要先撤销。")
             .setNegativeButton("暂不授权",null).setPositiveButton("前往授权",(d,w)->{
                 Intent i=new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
                 i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN,new ComponentName(this,LockAdminReceiver.class));
-                i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,"仅用于你主动选择的倒计时到时锁屏。");
+                i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,"仅用于你主动选择的直接息屏或倒计时到时锁屏。");
                 openSettings(i);
             }).show();
     }

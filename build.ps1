@@ -11,10 +11,12 @@ $android="$projectRoot\tools\sdk\android-35\android.jar"
 $build="$projectRoot\build"
 function Check([string]$stage){if($LASTEXITCODE -ne 0){throw "$stage failed with exit code $LASTEXITCODE"}}
 New-Item -ItemType Directory -Force "$build\tests" | Out-Null
-& $javac -encoding UTF-8 -d "$build\tests" "$projectRoot\app\src\main\java\cn\niuma\app\Session.java" "$projectRoot\tests\SessionTest.java"
+& $javac -encoding UTF-8 -d "$build\tests" "$projectRoot\app\src\main\java\cn\niuma\app\Session.java" "$projectRoot\tests\SessionTest.java" "$projectRoot\app\src\main\java\cn\niuma\app\PopupOptions.java" "$projectRoot\tests\PopupOptionsTest.java"
 Check 'Test compile'
 & $java -cp "$build\tests" cn.niuma.app.SessionTest
 Check 'Session tests'
+& $java -cp "$build\tests" cn.niuma.app.PopupOptionsTest
+Check 'Popup option tests'
 if($TestOnly){exit 0}
 $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
 $out="$build\$stamp"
@@ -48,14 +50,14 @@ if(-not (Test-Path -LiteralPath $key)){
     $env:NIUMA_SIGNING_PASSWORD=[System.Net.NetworkCredential]::new('',$secure).Password
 }
 try{
-    & $java -jar "$bt\lib\apksigner.jar" sign --ks $key --ks-key-alias niuma --ks-pass env:NIUMA_SIGNING_PASSWORD --key-pass env:NIUMA_SIGNING_PASSWORD --out "$projectRoot\dist\niuma-mode-0.1.1.apk" "$out\aligned.apk"
+    & $java -jar "$bt\lib\apksigner.jar" sign --ks $key --ks-key-alias niuma --ks-pass env:NIUMA_SIGNING_PASSWORD --key-pass env:NIUMA_SIGNING_PASSWORD --out "$projectRoot\dist\niuma-mode-0.1.2.apk" "$out\aligned.apk"
     Check 'APK signing'
 }finally{Remove-Item Env:NIUMA_SIGNING_PASSWORD -ErrorAction SilentlyContinue}
-& $java -jar "$bt\lib\apksigner.jar" verify --verbose --print-certs "$projectRoot\dist\niuma-mode-0.1.1.apk"
+& $java -jar "$bt\lib\apksigner.jar" verify --verbose --print-certs "$projectRoot\dist\niuma-mode-0.1.2.apk"
 Check 'APK signature verification'
-& "$bt\zipalign.exe" -c 4 "$projectRoot\dist\niuma-mode-0.1.1.apk"
+& "$bt\zipalign.exe" -c 4 "$projectRoot\dist\niuma-mode-0.1.2.apk"
 Check 'Final alignment check'
-& "$bt\aapt2.exe" dump badging "$projectRoot\dist\niuma-mode-0.1.1.apk"
+& "$bt\aapt2.exe" dump badging "$projectRoot\dist\niuma-mode-0.1.2.apk"
 Check 'APK manifest inspection'
-Get-FileHash -Algorithm SHA256 "$projectRoot\dist\niuma-mode-0.1.1.apk" | Format-List
-Write-Output "APK: $projectRoot\dist\niuma-mode-0.1.1.apk"
+Get-FileHash -Algorithm SHA256 "$projectRoot\dist\niuma-mode-0.1.2.apk" | Format-List
+Write-Output "APK: $projectRoot\dist\niuma-mode-0.1.2.apk"
