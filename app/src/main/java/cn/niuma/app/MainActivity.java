@@ -72,8 +72,7 @@ public final class MainActivity extends Activity {
         LinearLayout duration=Ui.card(this);
         duration.addView(Ui.text(this,"倒计时时长",14,Ui.MUTED,false));Ui.space(duration,10);
         TextView minutes=Ui.text(this,prefs.minutes()+" 分钟    ›",28,Ui.INK,true);
-        duration.addView(minutes);Ui.space(duration,8);
-        duration.addView(Ui.text(this,"点击修改 · 下一次倒计时生效",12,Ui.MUTED,false));
+        duration.addView(minutes);
         duration.setOnClickListener(v->editMinutes());duration.setContentDescription("修改倒计时时长，当前"+prefs.minutes()+"分钟");
         page.addView(duration);Ui.space(page,16);
 
@@ -91,19 +90,30 @@ public final class MainActivity extends Activity {
                 if(action==Prefs.LOCK&&!adminActive())explainAdmin();
             });
         }
-        actions.addView(choices);Ui.space(actions,12);
-        actions.addView(Ui.text(this,prefs.action()==Prefs.LOCK?
-            (adminActive()?"已授权锁屏 · 到时会锁定设备":"自动锁屏需要单独授权；未授权时改为提醒"):
-            "修改仅影响下一次会话",12,Ui.MUTED,false));
+        actions.addView(choices);
+        if(prefs.action()==Prefs.LOCK&&!adminActive()){
+            Ui.space(actions,12);
+            actions.addView(Ui.text(this,"自动锁屏需要单独授权；未授权时改为提醒",12,Ui.MUTED,false));
+        }
         page.addView(actions);Ui.space(page,22);
 
         LinearLayout popup=Ui.card(this);
         popup.addView(Ui.text(this,"解锁弹窗选项",17,Ui.INK,true));Ui.space(popup,8);
-        popup.addView(Ui.text(this,"已显示 "+Integer.bitCount(prefs.popupMask())+" 个选项  ›",22,Ui.INK,true));Ui.space(popup,8);
-        popup.addView(Ui.text(this,"正计时 / 倒计时 / 直接息屏 / 退出\n点击选择任意 2–4 个，下次弹窗生效",12,Ui.MUTED,false));
+        popup.addView(Ui.text(this,"已显示 "+Integer.bitCount(prefs.popupMask())+" 个选项  ›",22,Ui.INK,true));
         popup.setOnClickListener(v->editPopupOptions());page.addView(popup);Ui.space(page,22);
         LinearLayout weekly=Ui.card(this);
-        weekly.addView(Ui.text(this,"每周定时开启  ›",18,Ui.INK,true));Ui.space(weekly,8);
+        LinearLayout weeklyHeader=new LinearLayout(this);weeklyHeader.setGravity(Gravity.CENTER_VERTICAL);
+        weeklyHeader.addView(Ui.text(this,"每周定时开启",18,Ui.INK,true),new LinearLayout.LayoutParams(0,-2,1));
+        Switch weeklyToggle=new Switch(this);
+        weeklyToggle.setContentDescription("每周定时开启");
+        weeklyToggle.setMinHeight(Ui.dp(this,48));weeklyToggle.setMinWidth(Ui.dp(this,48));
+        weeklyToggle.setChecked(prefs.scheduleEnabled());
+        weeklyHeader.addView(weeklyToggle);weekly.addView(weeklyHeader);Ui.space(weekly,8);
+        weeklyToggle.setOnCheckedChangeListener((button,enabled)->{
+            prefs.schedule(enabled,prefs.scheduleDays(),prefs.scheduleHour(),prefs.scheduleMinute());
+            ScheduleManager.arm(this,true);render();
+            if(enabled)requestSchedulePermissions();
+        });
         weekly.addView(Ui.text(this,String.format(java.util.Locale.ROOT,"%02d:%02d",prefs.scheduleHour(),prefs.scheduleMinute()),28,Ui.INK,true));
         weekly.addView(Ui.text(this,ScheduleManager.days(prefs.scheduleDays()),13,Ui.MUTED,false));Ui.space(weekly,8);
         weekly.addView(Ui.text(this,ScheduleManager.summary(this),14,Ui.INK,false));
@@ -125,7 +135,7 @@ public final class MainActivity extends Activity {
         addSetting(page,"定时开启权限",ScheduleManager.exactAllowed(this)?"闹钟已允许":"去开启",this::requestSchedulePermissions);
         addSetting(page,"后台与弹窗权限","查看说明",this::showXiaomiHelp);
         Ui.space(page,14);
-        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.4 · 设置仅保存在本机",12,Ui.MUTED,false));
+        page.addView(Ui.text(this,"个人版 0.1.5 · 设置仅保存在本机",12,Ui.MUTED,false));
         updateStatus();
     }
     private void addSetting(LinearLayout parent,String title,String detail,Runnable action){
