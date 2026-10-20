@@ -59,6 +59,16 @@ public final class MainActivity extends Activity {
         Ui.space(state,7);state.addView(Ui.text(this,"开启后，每次解锁选择本次计时方式",13,Ui.MUTED,false));
         page.addView(state);Ui.space(page,16);
 
+        toggle=Ui.button(this,"",true);page.addView(toggle);
+        toggle.setOnClickListener(v->{
+            if(ModeService.running){
+                stopService(new Intent(this,ModeService.class));handler.postDelayed(this::updateStatus,150);
+            }else startMode();
+        });
+        Ui.space(page,10);
+        page.addView(Ui.text(this,"返回桌面后继续运行。退出仅结束本次模式；如需取消未来自动开启，请关闭每周定时规则。",12,Ui.MUTED,false));
+        Ui.space(page,24);
+
         LinearLayout duration=Ui.card(this);
         duration.addView(Ui.text(this,"倒计时时长",14,Ui.MUTED,false));Ui.space(duration,10);
         TextView minutes=Ui.text(this,prefs.minutes()+" 分钟    ›",28,Ui.INK,true);
@@ -99,15 +109,6 @@ public final class MainActivity extends Activity {
         weekly.addView(Ui.text(this,ScheduleManager.summary(this),14,Ui.INK,false));
         if(!prefs.scheduleReport().isEmpty()){Ui.space(weekly,8);weekly.addView(Ui.text(this,"上次记录："+prefs.scheduleReport(),12,Ui.MUTED,false));}
         weekly.setOnClickListener(v->editWeeklySchedule());page.addView(weekly);Ui.space(page,22);
-        toggle=Ui.button(this,"",true);page.addView(toggle);
-        toggle.setOnClickListener(v->{
-            if(ModeService.running){
-                stopService(new Intent(this,ModeService.class));handler.postDelayed(this::updateStatus,150);
-            }else startMode();
-        });
-        Ui.space(page,10);
-        page.addView(Ui.text(this,"返回桌面后继续运行。退出仅结束本次模式；如需取消未来自动开启，请关闭每周定时规则。",12,Ui.MUTED,false));
-        Ui.space(page,24);
         page.addView(Ui.text(this,"权限与小米设置",18,Ui.INK,true));Ui.space(page,10);
         addSetting(page,"悬浮窗",Settings.canDrawOverlays(this)?"已允许":"去开启",()->{
             openSettings(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
@@ -124,7 +125,7 @@ public final class MainActivity extends Activity {
         addSetting(page,"定时开启权限",ScheduleManager.exactAllowed(this)?"闹钟已允许":"去开启",this::requestSchedulePermissions);
         addSetting(page,"后台与弹窗权限","查看说明",this::showXiaomiHelp);
         Ui.space(page,14);
-        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.3 · 设置仅保存在本机",12,Ui.MUTED,false));
+        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.4 · 设置仅保存在本机",12,Ui.MUTED,false));
         updateStatus();
     }
     private void addSetting(LinearLayout parent,String title,String detail,Runnable action){
