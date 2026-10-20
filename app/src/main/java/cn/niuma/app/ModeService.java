@@ -79,7 +79,16 @@ public final class ModeService extends Service {
     }
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent==null||STOP.equals(intent.getAction())){exit();return START_NOT_STICKY;}
-        if(!Settings.canDrawOverlays(this)){exit();return START_NOT_STICKY;}
+        boolean scheduled=intent.hasExtra("scheduled_due");
+        if(scheduled&&(!prefs.scheduleEnabled()
+            ||intent.getLongExtra("scheduled_revision",-1)!=prefs.scheduleRevision()
+            ||intent.getLongExtra("scheduled_due",0)!=prefs.scheduleLastDue())){
+            if(!running)stopSelf();return START_NOT_STICKY;
+        }
+        if(!Settings.canDrawOverlays(this)){
+            if(scheduled)ScheduleManager.failed(this,"定时未开启：缺少悬浮窗权限");
+            exit();return START_NOT_STICKY;
+        }
         NotificationManager nm=getSystemService(NotificationManager.class);
         NotificationChannel ch=new NotificationChannel("mode","牛马模式运行状态",NotificationManager.IMPORTANCE_LOW);
         ch.setDescription("模式运行时显示，可随时退出");nm.createNotificationChannel(ch);
@@ -92,12 +101,17 @@ public final class ModeService extends Service {
         try{
             if(Build.VERSION.SDK_INT>=34)startForeground(NOTICE,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(NOTICE,n);
-        }catch(RuntimeException e){Toast.makeText(this,"无法启动后台计时，请检查系统权限",Toast.LENGTH_LONG).show();exit();return START_NOT_STICKY;}
+        }catch(RuntimeException e){
+            if(scheduled)ScheduleManager.failed(this,"系统阻止了定时后台运行，请检查小米权限");
+            Toast.makeText(this,"无法启动后台计时，请检查系统权限",Toast.LENGTH_LONG).show();exit();return START_NOT_STICKY;
+        }
         if(!registered){
             IntentFilter f=new IntentFilter();f.addAction(Intent.ACTION_SCREEN_OFF);f.addAction(Intent.ACTION_USER_PRESENT);f.addAction(Intent.ACTION_SCREEN_ON);
             if(Build.VERSION.SDK_INT>=33)registerReceiver(screenReceiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(screenReceiver,f);
             registered=true;
         }
+        if(scheduled)prefs.scheduleReport(running?"到点时模式已开启，保留原计时":"定时开启成功");
+        getSystemService(NotificationManager.class).cancel(71);
         running=true;
         if(session.state()==Session.OFF){
             session.enable();
@@ -281,6 +295,7 @@ public final class ModeService extends Service {
         if(cardRoot!=null){try{windows.removeView(cardRoot);}catch(IllegalArgumentException ignored){}cardRoot=null;}
     }
     private void overlayFailure(){
+        if(prefs.scheduleEnabled())prefs.scheduleReport("模式已停止：悬浮窗未能显示");
         Toast.makeText(this,"悬浮窗未能显示，模式已停止。请检查系统权限。",Toast.LENGTH_LONG).show();exit();
     }
     private void exit(){

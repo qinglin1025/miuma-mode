@@ -22,7 +22,7 @@ public final class MainActivity extends Activity {
         public void run(){updateStatus();handler.postDelayed(this,750);}
     };
     @Override public void onCreate(Bundle b){super.onCreate(b);prefs=new Prefs(this);}
-    @Override public void onResume(){super.onResume();render();handler.removeCallbacks(refresh);handler.post(refresh);
+    @Override public void onResume(){super.onResume();ScheduleManager.arm(this,false);render();handler.removeCallbacks(refresh);handler.post(refresh);
         if(getIntent().getBooleanExtra("lock_authorization",false)){
             getIntent().removeExtra("lock_authorization");
             if(!adminActive())explainAdmin();
@@ -92,6 +92,13 @@ public final class MainActivity extends Activity {
         popup.addView(Ui.text(this,"已显示 "+Integer.bitCount(prefs.popupMask())+" 个选项  ›",22,Ui.INK,true));Ui.space(popup,8);
         popup.addView(Ui.text(this,"正计时 / 倒计时 / 直接息屏 / 退出\n点击选择任意 2–4 个，下次弹窗生效",12,Ui.MUTED,false));
         popup.setOnClickListener(v->editPopupOptions());page.addView(popup);Ui.space(page,22);
+        LinearLayout weekly=Ui.card(this);
+        weekly.addView(Ui.text(this,"每周定时开启  ›",18,Ui.INK,true));Ui.space(weekly,8);
+        weekly.addView(Ui.text(this,String.format(java.util.Locale.ROOT,"%02d:%02d",prefs.scheduleHour(),prefs.scheduleMinute()),28,Ui.INK,true));
+        weekly.addView(Ui.text(this,ScheduleManager.days(prefs.scheduleDays()),13,Ui.MUTED,false));Ui.space(weekly,8);
+        weekly.addView(Ui.text(this,ScheduleManager.summary(this),14,Ui.INK,false));
+        if(!prefs.scheduleReport().isEmpty()){Ui.space(weekly,8);weekly.addView(Ui.text(this,"上次记录："+prefs.scheduleReport(),12,Ui.MUTED,false));}
+        weekly.setOnClickListener(v->editWeeklySchedule());page.addView(weekly);Ui.space(page,22);
         toggle=Ui.button(this,"",true);page.addView(toggle);
         toggle.setOnClickListener(v->{
             if(ModeService.running){
@@ -99,7 +106,7 @@ public final class MainActivity extends Activity {
             }else startMode();
         });
         Ui.space(page,10);
-        page.addView(Ui.text(this,"返回桌面后继续运行；退出模式后停止所有计时。",12,Ui.MUTED,false));
+        page.addView(Ui.text(this,"返回桌面后继续运行。退出仅结束本次模式；如需取消未来自动开启，请关闭每周定时规则。",12,Ui.MUTED,false));
         Ui.space(page,24);
         page.addView(Ui.text(this,"权限与小米设置",18,Ui.INK,true));Ui.space(page,10);
         addSetting(page,"悬浮窗",Settings.canDrawOverlays(this)?"已允许":"去开启",()->{
@@ -114,15 +121,62 @@ public final class MainActivity extends Activity {
         addSetting(page,"息屏 / 锁屏授权",adminActive()?"已授权 / 管理":"可选",()->{
             if(adminActive())openSettings(new Intent(Settings.ACTION_SECURITY_SETTINGS));else explainAdmin();
         });
+        addSetting(page,"定时开启权限",ScheduleManager.exactAllowed(this)?"闹钟已允许":"去开启",this::requestSchedulePermissions);
         addSetting(page,"后台与弹窗权限","查看说明",this::showXiaomiHelp);
         Ui.space(page,14);
-        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.2 · 设置仅保存在本机",12,Ui.MUTED,false));
+        page.addView(Ui.text(this,"正计时圆圈在 10 分钟达到最大，之后继续计时。\n锁屏结束本次计时，下次解锁重新选择。\n\n个人版 0.1.3 · 设置仅保存在本机",12,Ui.MUTED,false));
         updateStatus();
     }
     private void addSetting(LinearLayout parent,String title,String detail,Runnable action){
         TextView row=Ui.text(this,title+"    "+detail+"  ›",14,Ui.INK,false);
         int p=Ui.dp(this,14);row.setPadding(p,p,p,p);row.setBackground(Ui.bg(this,Color.WHITE,12));
         row.setOnClickListener(v->action.run());parent.addView(row);Ui.space(parent,6);
+    }
+    private void editWeeklySchedule(){
+        LinearLayout box=Ui.column(this);int pad=Ui.dp(this,20);box.setPadding(pad,0,pad,0);
+        Switch enabled=new Switch(this);enabled.setText("启用每周定时");enabled.setChecked(prefs.scheduleEnabled());box.addView(enabled);
+        Ui.space(box,12);box.addView(Ui.text(this,"选择星期（可多选）",16,Ui.INK,true));
+        String[] names={"周一","周二","周三","周四","周五","周六","周日"};
+        CheckBox[] days=new CheckBox[7];
+        for(int row=0;row<2;row++){
+            LinearLayout line=new LinearLayout(this);
+            for(int col=0;col<4;col++){
+                int day=row*4+col;if(day>=7)break;
+                days[day]=new CheckBox(this);days[day].setText(names[day]);days[day].setTextSize(13);
+                days[day].setChecked((prefs.scheduleDays()&(1<<day))!=0);
+                line.addView(days[day],new LinearLayout.LayoutParams(0,-2,1));
+            }
+            box.addView(line);
+        }
+        TimePicker time=new TimePicker(this);time.setIs24HourView(true);
+        time.setHour(prefs.scheduleHour());time.setMinute(prefs.scheduleMinute());box.addView(time);
+        box.addView(Ui.text(this,"到点启用模式，不强行打开首页。锁屏时等解锁再弹窗。已在计时则保留原计时。\n退出模式不关闭规则；停用规则才取消下一次定时。",12,Ui.MUTED,false));
+        ScrollView scroll=new ScrollView(this);scroll.addView(box);
+        AlertDialog d=new AlertDialog.Builder(this).setTitle("每周定时开启").setView(scroll)
+          .setNegativeButton("取消",null).setPositiveButton("保存",null).create();
+        d.setOnShowListener(v->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w->{
+            int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;
+            if(mask==0){Toast.makeText(this,"请至少选择一天",Toast.LENGTH_SHORT).show();return;}
+            prefs.schedule(enabled.isChecked(),mask,time.getHour(),time.getMinute());
+            ScheduleManager.arm(this,true);d.dismiss();render();
+            if(enabled.isChecked())requestSchedulePermissions();
+        }));d.show();
+    }
+    private void requestSchedulePermissions(){
+        if(!ScheduleManager.exactAllowed(this)&&Build.VERSION.SDK_INT>=31){
+            new AlertDialog.Builder(this).setTitle("允许定时开启")
+              .setMessage("需要系统“闹钟和提醒”权限，才能按你设置的时间启用牛马模式。授权后返回软件。")
+              .setNegativeButton("稍后",null).setPositiveButton("前往授权",(d,w)->
+                 openSettings(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())))).show();
+        }else if(!Settings.canDrawOverlays(this)){
+            new AlertDialog.Builder(this).setTitle("还需要悬浮窗权限")
+              .setMessage("规则已保存，授权后才能启用。请允许悬浮窗，然后返回软件。")
+              .setNegativeButton("稍后",null).setPositiveButton("前往授权",(d,w)->
+                 openSettings(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())))).show();
+        }else{
+            ScheduleManager.arm(this,false);render();
+            Toast.makeText(this,"请同时检查小米自启动和省电设置；定时状态可在首页查看",Toast.LENGTH_LONG).show();
+        }
     }
     private void editPopupOptions(){
         String[] labels={"正计时","倒计时","直接息屏","退出牛马模式"};
@@ -184,7 +238,7 @@ public final class MainActivity extends Activity {
     }
     private void showXiaomiHelp(){
         new AlertDialog.Builder(this).setTitle("HyperOS 使用提示")
-            .setMessage("在应用信息中允许悬浮窗，以及系统提供的后台弹出界面权限。\n\n如模式经常停止，可将省电策略改为“不限制”，并在最近任务中锁定应用。不同系统版本的名称可能不同。\n\n本应用不随开机自动启动；进程被清理后，请重新打开应用开启模式。\n\n如果解锁未弹窗，先检查这些权限。")
+            .setMessage("在应用信息中允许悬浮窗，以及系统提供的后台弹出界面权限。\n\n如模式经常停止，可将省电策略改为“不限制”，并在最近任务中锁定应用。不同系统版本的名称可能不同。\n\n启用每周定时后，请允许系统提供的自启动权限，并将省电策略设为不限制。重启后会尝试恢复未来定时，不立即开启模式；错过的时间不补开。强行停止后需要手动打开应用恢复。\n\n如果解锁未弹窗，先检查这些权限。")
             .setNegativeButton("知道了",null).setPositiveButton("打开应用信息",(d,w)->
                 openSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())))).show();
     }
