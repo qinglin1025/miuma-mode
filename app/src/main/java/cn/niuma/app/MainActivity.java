@@ -118,7 +118,7 @@ public final class MainActivity extends Activity {
         if(!prefs.scheduleReport().isEmpty()){Ui.space(weekly,8);weekly.addView(Ui.text(this,"上次记录："+prefs.scheduleReport(),12,Ui.MUTED,false));}
         weekly.setOnClickListener(v->editWeeklySchedule());page.addView(weekly);Ui.space(page,22);
         LinearLayout permissions=Ui.card(this);
-        permissions.addView(Ui.text(this,"权限与小米设置",18,Ui.INK,true));Ui.space(permissions,10);
+        permissions.addView(Ui.text(this,"权限与后台设置",18,Ui.INK,true));Ui.space(permissions,10);
         addSetting(permissions,"悬浮窗",Settings.canDrawOverlays(this)?"已允许":"去开启",()->{
             openSettings(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
         });
@@ -132,10 +132,13 @@ public final class MainActivity extends Activity {
             if(adminActive())openSettings(new Intent(Settings.ACTION_SECURITY_SETTINGS));else explainAdmin();
         });
         addSetting(permissions,"定时开启权限",ScheduleManager.exactAllowed(this)?"闹钟已允许":"去开启",this::requestSchedulePermissions);
-        addSetting(permissions,"后台与弹窗权限","查看说明",this::showXiaomiHelp);
+        addSetting(permissions,"后台与弹窗权限","查看说明",this::showBackgroundHelp);
+        addSetting(permissions,"系统电池优化",batteryExempt()?"已豁免":"查看",()->
+            openSettings(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
+        addSetting(permissions,"设备与权限检查","查看",this::showDiagnostics);
         page.addView(permissions);
         Ui.space(page,14);
-        page.addView(Ui.text(this,"个人版 0.1.6 · 设置仅保存在本机",12,Ui.MUTED,false));
+        page.addView(Ui.text(this,"个人版 0.1.7 · 设置仅保存在本机",12,Ui.MUTED,false));
         updateStatus();
     }
     private void addSetting(LinearLayout parent,String title,String detail,Runnable action){
@@ -186,7 +189,7 @@ public final class MainActivity extends Activity {
                  openSettings(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())))).show();
         }else{
             ScheduleManager.arm(this,false);render();
-            Toast.makeText(this,"请同时检查小米自启动和省电设置；定时状态可在首页查看",Toast.LENGTH_LONG).show();
+            Toast.makeText(this,"请同时检查手机自启动和省电设置；定时状态可在首页查看",Toast.LENGTH_LONG).show();
         }
     }
     private void editPopupOptions(){
@@ -247,13 +250,57 @@ public final class MainActivity extends Activity {
                 openSettings(i);
             }).show();
     }
-    private void showXiaomiHelp(){
-        new AlertDialog.Builder(this).setTitle("HyperOS 使用提示")
-            .setMessage("在应用信息中允许悬浮窗，以及系统提供的后台弹出界面权限。\n\n如模式经常停止，可将省电策略改为“不限制”，并在最近任务中锁定应用。不同系统版本的名称可能不同。\n\n启用每周定时后，请允许系统提供的自启动权限，并将省电策略设为不限制。重启后会尝试恢复未来定时，不立即开启模式；错过的时间不补开。强行停止后需要手动打开应用恢复。\n\n如果解锁未弹窗，先检查这些权限。")
+    private boolean batteryExempt(){
+        return getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(getPackageName());
+    }
+    private void showBackgroundHelp(){
+        String device=(Build.BRAND+" "+Build.MANUFACTURER).toLowerCase(java.util.Locale.ROOT);
+        String hint="请在系统设置中检查本应用的后台运行、电池优化及自启动选项（如有）。";
+        if(device.contains("xiaomi")||device.contains("redmi")||device.contains("poco"))
+            hint="小米 / Redmi / POCO：检查自启动、省电策略，以及系统提供的后台弹出界面权限。";
+        else if(device.contains("vivo")||device.contains("iqoo"))
+            hint="vivo / iQOO：检查后台耗电管理、自启动和悬浮窗选项（如有）。";
+        else if(device.contains("oppo")||device.contains("realme")||device.contains("oneplus"))
+            hint="OPPO / realme / 一加：检查应用电池管理中的后台活动、自启动及悬浮窗选项（如有）。";
+        else if(device.contains("honor")||device.contains("huawei"))
+            hint="华为 / 荣耀安卓兼容系统：检查应用启动管理中的自动启动、后台活动及悬浮窗选项（如有）。";
+        else if(device.contains("samsung"))
+            hint="三星：检查应用电池设置及休眠应用限制，避免运行中的计时被限制。";
+        new AlertDialog.Builder(this).setTitle("后台运行设置")
+            .setMessage(hint+"\n\n菜单名称随系统版本变化。系统电池优化显示已豁免，也不代表厂商的后台限制已解除。仅在计时停止或定时失败时按需调整。\n\n每周定时需要闹钟和悬浮窗权限。重启后恢复未来定时，错过的时间不补开。强行停止后需重新打开软件。\n\n退出模式仅结束本次使用；取消后续自动开启请关闭每周定时开关。")
             .setNegativeButton("知道了",null).setPositiveButton("打开应用信息",(d,w)->
                 openSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())))).show();
     }
+    private void showDiagnostics(){
+        String version="未知";
+        try{version=getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(PackageManager.NameNotFoundException ignored){}
+        String report="牛马模式 "+version+"\n设备："+Build.MANUFACTURER+" / "+Build.BRAND+" / "+Build.MODEL
+            +"\nAndroid："+Build.VERSION.RELEASE+"（API "+Build.VERSION.SDK_INT+"）"
+            +"\n悬浮窗："+(Settings.canDrawOverlays(this)?"已允许":"未允许")
+            +"\n通知："+(getSystemService(NotificationManager.class).areNotificationsEnabled()?"已允许":"未允许")
+            +"\n锁屏授权："+(adminActive()?"已授权":"未授权")
+            +"\n精确闹钟："+(ScheduleManager.exactAllowed(this)?"可用":"未允许")
+            +"\n系统电池优化："+(batteryExempt()?"已豁免":"未豁免")
+            +"\n省电模式："+(getSystemService(PowerManager.class).isPowerSaveMode()?"已开启":"未开启")
+            +"\n当前模式："+(ModeService.running?"运行中":"未开启")
+            +"\n定时："+ScheduleManager.summary(this)
+            +"\n最近定时记录："+(prefs.scheduleReport().isEmpty()?"无":prefs.scheduleReport())
+            +"\n厂商自启动与后台限制：需手动检查";
+        new AlertDialog.Builder(this).setTitle("设备与权限检查").setMessage(report)
+            .setNegativeButton("关闭",null).setPositiveButton("复制信息",(d,w)->{
+                getSystemService(android.content.ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("牛马模式检查",report));
+                Toast.makeText(this,"已复制，可附上具体问题反馈",Toast.LENGTH_SHORT).show();
+            }).show();
+    }
+    private boolean trySettings(Intent i){
+        try{startActivity(i);return true;}
+        catch(ActivityNotFoundException|SecurityException e){return false;}
+    }
     private void openSettings(Intent i){
-        try{startActivity(i);}catch(ActivityNotFoundException e){Toast.makeText(this,"此页面不可用，请在系统设置中搜索对应权限",Toast.LENGTH_LONG).show();}
+        if(trySettings(i))return;
+        Toast.makeText(this,"此设置入口不可用，请在系统设置中手动查找",Toast.LENGTH_LONG).show();
+        Intent details=new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));
+        if(!Settings.ACTION_APPLICATION_DETAILS_SETTINGS.equals(i.getAction())&&trySettings(details))return;
+        trySettings(new Intent(Settings.ACTION_SETTINGS));
     }
 }

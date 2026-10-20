@@ -102,7 +102,7 @@ public final class ModeService extends Service {
             if(Build.VERSION.SDK_INT>=34)startForeground(NOTICE,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(NOTICE,n);
         }catch(RuntimeException e){
-            if(scheduled)ScheduleManager.failed(this,"系统阻止了定时后台运行，请检查小米权限");
+            if(scheduled)ScheduleManager.failed(this,"系统阻止了定时后台运行，请检查自启动和后台运行权限");
             Toast.makeText(this,"无法启动后台计时，请检查系统权限",Toast.LENGTH_LONG).show();exit();return START_NOT_STICKY;
         }
         if(!registered){

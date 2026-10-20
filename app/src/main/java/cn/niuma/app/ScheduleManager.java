@@ -50,7 +50,7 @@ final class ScheduleManager {
    c.startForegroundService(new Intent(c,ModeService.class).setAction(ModeService.START)
     .putExtra("scheduled_due",due).putExtra("scheduled_revision",revision));
   }catch(RuntimeException e){
-   failed(c,"系统阻止了后台开启，请检查小米自启动和省电设置");
+   failed(c,"系统阻止了后台开启，请检查自启动和省电设置");
    android.util.Log.w("NiumaMode","Scheduled start blocked",e);
   }
  }
